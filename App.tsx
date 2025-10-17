@@ -122,7 +122,11 @@ const App: React.FC = () => {
     try {
       const storedFavorites = localStorage.getItem('idiomFavorites');
       if (storedFavorites) {
-        setFavorites(JSON.parse(storedFavorites));
+        const parsed = JSON.parse(storedFavorites);
+        console.log(`Loaded ${parsed.length} favorites from localStorage`);
+        setFavorites(parsed);
+      } else {
+        console.log('No favorites found in localStorage');
       }
     } catch (error) {
       console.error("Failed to load favorites from localStorage:", error);
@@ -442,17 +446,11 @@ const App: React.FC = () => {
     setViewMode(newMode);
     
     if (newMode === ViewMode.FAVORITES) {
+      // Just switch to favorites view - don't auto-load anything
+      // The favorites list will be shown
       setCurrentFavoriteIndex(0);
-      if (favorites.length > 0) {
-          const firstFavorite = favorites[0];
-          // Load from offline storage
-          setCurrentIdiom(firstFavorite.idiom);
-          setLanguage(firstFavorite.language);
-          setIdiomInfo(firstFavorite.info);
-          setAppState(AppState.SUCCESS);
-          setCrossLanguageIdioms(null);
-      }
     } else {
+      // When switching back to All, fetch a new idiom
       fetchNewIdiom();
     }
   };
@@ -652,14 +650,59 @@ const App: React.FC = () => {
         );
     }
 
-    if (viewMode === ViewMode.FAVORITES && favorites.length === 0) {
-        return (
-            <div className="placeholder-container">
-                <StarIcon className="w-12 h-12 text-gray-500 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-300">No Favorites Yet</h3>
-                <p>Click the star on an idiom to save it here.</p>
-            </div>
-        );
+    if (viewMode === ViewMode.FAVORITES) {
+        if (favorites.length === 0) {
+            return (
+                <div className="placeholder-container">
+                    <StarIcon className="w-12 h-12 text-gray-500 mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-300">No Favorites Yet</h3>
+                    <p>Click the star on an idiom to save it here.</p>
+                </div>
+            );
+        }
+        
+        // If no current idiom is loaded, show the list
+        if (!currentIdiom || appState !== AppState.SUCCESS) {
+            return (
+                <div className="favorites-list-container">
+                    <h3 className="favorites-list-header">
+                        My Favorites ({favorites.length}/50)
+                    </h3>
+                    <ul className="favorites-list">
+                        {favorites.map((favorite, index) => (
+                            <li key={`${favorite.idiom}-${favorite.language}-${favorite.savedAt}`}>
+                                <button 
+                                    className="favorite-list-item"
+                                    onClick={() => {
+                                        // Load the favorite
+                                        setCurrentIdiom(favorite.idiom);
+                                        setLanguage(favorite.language);
+                                        setIdiomInfo(favorite.info);
+                                        setAppState(AppState.SUCCESS);
+                                        setCrossLanguageIdioms(null);
+                                        setCurrentFavoriteIndex(index);
+                                    }}
+                                >
+                                    <div className="favorite-item-content">
+                                        <span className="favorite-item-idiom">{favorite.idiom}</span>
+                                        <span className="favorite-item-lang">{favorite.language}</span>
+                                    </div>
+                                    <div className="favorite-item-meta">
+                                        {favorite.audioData && (
+                                            <span className="favorite-has-audio" title="Has offline audio">🔊</span>
+                                        )}
+                                        <span className="favorite-item-date">
+                                            {new Date(favorite.savedAt).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            );
+        }
+        // If a favorite is loaded, fall through to show the idiom details below
     }
 
     switch (appState) {
@@ -836,14 +879,36 @@ const App: React.FC = () => {
       
       <footer className="footer">
         <div className="controls">
-            <button onClick={handleNextIdiom} disabled={appState === AppState.LOADING || isShowingRelated} className="btn btn-primary">
-            <ArrowPathIcon className="w-5 h-5" />
-            Next Idiom
-            </button>
-            <button onClick={handleShowRelated} disabled={appState !== AppState.SUCCESS || isShowingRelated} className="btn btn-secondary">
-            <SparklesIcon className="w-5 h-5" />
-            Related Idioms
-            </button>
+            {viewMode === ViewMode.FAVORITES && currentIdiom && appState === AppState.SUCCESS ? (
+              <>
+                <button 
+                  onClick={() => {
+                    setCurrentIdiom(null);
+                    setIdiomInfo(null);
+                    setAppState(AppState.IDLE);
+                  }} 
+                  className="btn btn-secondary"
+                >
+                  <ArrowUturnLeftIcon className="w-5 h-5" />
+                  Back to List
+                </button>
+                <button onClick={handleNextIdiom} disabled={appState === AppState.LOADING} className="btn btn-primary">
+                  <ArrowPathIcon className="w-5 h-5" />
+                  Next Favorite
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={handleNextIdiom} disabled={appState === AppState.LOADING || isShowingRelated} className="btn btn-primary">
+                  <ArrowPathIcon className="w-5 h-5" />
+                  Next Idiom
+                </button>
+                <button onClick={handleShowRelated} disabled={appState !== AppState.SUCCESS || isShowingRelated} className="btn btn-secondary">
+                  <SparklesIcon className="w-5 h-5" />
+                  Related Idioms
+                </button>
+              </>
+            )}
         </div>
         <p className="copyright">&copy; 2024 FiguroAI.com | Chirag Kansara</p>
       </footer>
