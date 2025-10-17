@@ -8,6 +8,7 @@ import { getIdiomInfo, getTextToSpeech, getRelatedIdioms, getCrossLanguageIdioms
 import { ArrowPathIcon, SpeakerWaveIcon, StopIcon, MagnifyingGlassIcon, StarIcon, ArrowDownTrayIcon, XMarkIcon, SparklesIcon, ArrowUturnLeftIcon } from './components/icons';
 import { Login } from './components/Login';
 import { getCurrentUser, saveCurrentUser, logout, User } from './services/authService';
+import { fetchUserFavorites, saveFavoriteToBackend, deleteFavoriteFromBackend, checkBackendHealth } from './services/favoritesApi';
 
 // --- Types for Config ---
 type LanguageConfig = {
@@ -87,6 +88,7 @@ const App: React.FC = () => {
   // User authentication state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [isBackendAvailable, setIsBackendAvailable] = useState(false);
 
   // Related Idioms State
   const [isShowingRelated, setIsShowingRelated] = useState(false);
@@ -124,17 +126,59 @@ const App: React.FC = () => {
     fetchConfig();
   }, []);
 
+  // Check backend availability on startup
+  useEffect(() => {
+    const checkBackend = async () => {
+      const available = await checkBackendHealth();
+      setIsBackendAvailable(available);
+      if (available) {
+        console.log('✅ Backend API is available');
+      } else {
+        console.log('⚠️ Backend API not available, using local storage only');
+      }
+    };
+    checkBackend();
+  }, []);
+
   // Check for logged-in user on startup
   useEffect(() => {
-    const user = getCurrentUser();
-    if (user) {
-      console.log('✅ User already logged in:', user.username);
-      setCurrentUser(user);
-    } else {
-      console.log('⚠️ No user logged in, showing login screen');
-      setShowLogin(true);
+    const loadUser = async () => {
+      const user = getCurrentUser();
+      if (user) {
+        console.log('✅ User already logged in:', user.username);
+        setCurrentUser(user);
+        
+        // Load favorites from backend if available
+        if (isBackendAvailable) {
+          try {
+            const serverFavorites = await fetchUserFavorites(user.id);
+            const convertedFavorites: Favorite[] = serverFavorites.map(fav => ({
+              idiom: fav.idiom,
+              language: fav.language as Language,
+              info: {
+                meaning: fav.meaning,
+                history: fav.history,
+                examples: fav.examples
+              },
+              audioData: fav.audio_url,
+              savedAt: fav.saved_at
+            }));
+            setFavorites(convertedFavorites);
+            console.log(`✅ Auto-loaded ${convertedFavorites.length} favorites from backend`);
+          } catch (error) {
+            console.error('❌ Failed to auto-load favorites:', error);
+          }
+        }
+      } else {
+        console.log('⚠️ No user logged in, showing login screen');
+        setShowLogin(true);
+      }
+    };
+    
+    if (isBackendAvailable !== null) {
+      loadUser();
     }
-  }, []);
+  }, [isBackendAvailable]);
   
   useEffect(() => {
     if (!currentUser) return; // Don't load favorites if not logged in
@@ -227,12 +271,40 @@ const App: React.FC = () => {
     originalIdiomRef.current = null;
   }
   
-  const handleLogin = (user: User) => {
+  const handleLogin = async (user: User) => {
     console.log('✅ User logged in:', user.username);
     setCurrentUser(user);
     saveCurrentUser(user);
     setShowLogin(false);
     setToastMessage(`Welcome back, ${user.name}! 👋`);
+    
+    // Load favorites from backend if available
+    if (isBackendAvailable) {
+      try {
+        console.log('🔄 Loading favorites from backend...');
+        const serverFavorites = await fetchUserFavorites(user.id);
+        
+        // Convert backend format to frontend format
+        const convertedFavorites: Favorite[] = serverFavorites.map(fav => ({
+          idiom: fav.idiom,
+          language: fav.language as Language,
+          info: {
+            meaning: fav.meaning,
+            history: fav.history,
+            examples: fav.examples
+          },
+          audioData: fav.audio_url, // S3 URL instead of base64
+          savedAt: fav.saved_at
+        }));
+        
+        setFavorites(convertedFavorites);
+        console.log(`✅ Loaded ${convertedFavorites.length} favorites from backend`);
+        setToastMessage(`Welcome back! ${convertedFavorites.length} favorites synced 🎉`);
+      } catch (error) {
+        console.error('❌ Failed to load favorites from backend:', error);
+        setToastMessage('⚠️ Using local favorites only');
+      }
+    }
   };
   
   const handleLogout = () => {
@@ -445,6 +517,16 @@ const App: React.FC = () => {
     const isFavorite = favorites.some(fav => fav.idiom === currentIdiom && fav.language === language);
     
     if (isFavorite) {
+      // Delete from backend if available
+      if (isBackendAvailable && currentUser) {
+        try {
+          await deleteFavoriteFromBackend(currentUser.id, currentIdiom, language);
+          console.log('✅ Deleted from backend');
+        } catch (error) {
+          console.error('❌ Failed to delete from backend:', error);
+        }
+      }
+      
       const updatedFavorites = favorites.filter(fav => !(fav.idiom === currentIdiom && fav.language === language));
       setFavorites(updatedFavorites);
       setToastMessage('Removed from favorites');
@@ -458,33 +540,70 @@ const App: React.FC = () => {
         return;
       }
       
-      setToastMessage('💾 Saving to favorites with audio...');
+      setToastMessage('💾 Saving to favorites...');
       
       try {
-        // Fetch and save audio data for offline playback
+        // Fetch audio data
         let audioData: string | undefined;
         try {
           const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.examples[0]}`;
           audioData = await getTextToSpeech(textToSpeak);
-          console.log('Audio saved with favorite, size:', audioData.length);
+          console.log('Audio generated, size:', audioData.length);
         } catch (err) {
-          console.warn('Could not save audio with favorite:', err);
-          // Continue without audio - better to save without audio than not save at all
+          console.warn('Could not generate audio:', err);
         }
         
-        // Save complete idiom information for offline access
-        const newFavorite: Favorite = {
-          idiom: currentIdiom,
-          language,
-          info: idiomInfo,
-          audioData,
-          savedAt: Date.now()
-        };
-        
-        // Add to beginning of array (most recent first) and limit to 50
-        const updatedFavorites = [newFavorite, ...favorites].slice(0, 50);
-        setFavorites(updatedFavorites);
-        setToastMessage(`✨ Saved to favorites! (${updatedFavorites.length}/50) Available offline.`);
+        // Save to backend if available
+        if (isBackendAvailable && currentUser) {
+          try {
+            setToastMessage('☁️ Uploading to cloud...');
+            const result = await saveFavoriteToBackend(
+              currentUser.id,
+              currentIdiom,
+              language,
+              idiomInfo,
+              audioData
+            );
+            
+            // Create favorite with S3 URL
+            const newFavorite: Favorite = {
+              idiom: currentIdiom,
+              language,
+              info: idiomInfo,
+              audioData: result.audioUrl, // S3 URL
+              savedAt: Date.now()
+            };
+            
+            const updatedFavorites = [newFavorite, ...favorites].slice(0, 50);
+            setFavorites(updatedFavorites);
+            setToastMessage(`✨ Saved to cloud! (${updatedFavorites.length}/50) Synced across devices 🌐`);
+          } catch (backendError) {
+            console.error('Backend save failed, falling back to local:', backendError);
+            // Fallback to local storage
+            const newFavorite: Favorite = {
+              idiom: currentIdiom,
+              language,
+              info: idiomInfo,
+              audioData,
+              savedAt: Date.now()
+            };
+            const updatedFavorites = [newFavorite, ...favorites].slice(0, 50);
+            setFavorites(updatedFavorites);
+            setToastMessage(`✨ Saved locally! (${updatedFavorites.length}/50) Local only.`);
+          }
+        } else {
+          // No backend, save locally only
+          const newFavorite: Favorite = {
+            idiom: currentIdiom,
+            language,
+            info: idiomInfo,
+            audioData,
+            savedAt: Date.now()
+          };
+          const updatedFavorites = [newFavorite, ...favorites].slice(0, 50);
+          setFavorites(updatedFavorites);
+          setToastMessage(`✨ Saved locally! (${updatedFavorites.length}/50)`);
+        }
       } catch (err) {
         console.error('Error saving favorite:', err);
         setToastMessage('❌ Failed to save favorite. Please try again.');
