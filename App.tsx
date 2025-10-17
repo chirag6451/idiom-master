@@ -121,15 +121,16 @@ const App: React.FC = () => {
   useEffect(() => {
     try {
       const storedFavorites = localStorage.getItem('idiomFavorites');
+      console.log('Raw localStorage data:', storedFavorites?.substring(0, 100));
       if (storedFavorites) {
         const parsed = JSON.parse(storedFavorites);
-        console.log(`Loaded ${parsed.length} favorites from localStorage`);
+        console.log(`✅ Loaded ${parsed.length} favorites from localStorage:`, parsed.map(f => f.idiom));
         setFavorites(parsed);
       } else {
-        console.log('No favorites found in localStorage');
+        console.log('⚠️ No favorites found in localStorage');
       }
     } catch (error) {
-      console.error("Failed to load favorites from localStorage:", error);
+      console.error("❌ Failed to load favorites from localStorage:", error);
     }
   }, []);
   
@@ -142,6 +143,11 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
+    if (favorites.length === 0) {
+      console.log('⚠️ Favorites array is empty, not saving to localStorage');
+      return;
+    }
+    
     try {
       const favoritesData = JSON.stringify(favorites);
       localStorage.setItem('idiomFavorites', favoritesData);
@@ -150,14 +156,15 @@ const App: React.FC = () => {
       const sizeInBytes = new Blob([favoritesData]).size;
       const sizeInKB = (sizeInBytes / 1024).toFixed(2);
       const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
-      console.log(`Favorites storage: ${favorites.length} items, ${sizeInKB} KB (${sizeInMB} MB)`);
+      console.log(`💾 Saved ${favorites.length} favorites to localStorage: ${sizeInKB} KB (${sizeInMB} MB)`);
+      console.log('Favorites:', favorites.map(f => f.idiom));
       
       // Warn if approaching localStorage limit (typically 5-10MB)
       if (sizeInBytes > 4 * 1024 * 1024) { // 4MB warning
-        console.warn('Favorites storage is getting large. Consider removing old items.');
+        console.warn('⚠️ Favorites storage is getting large. Consider removing old items.');
       }
     } catch (error: any) {
-      console.error("Failed to save favorites to localStorage:", error);
+      console.error("❌ Failed to save favorites to localStorage:", error);
       if (error.name === 'QuotaExceededError') {
         setToastMessage('⚠️ Storage full! Remove some favorites to save new ones.');
       }
