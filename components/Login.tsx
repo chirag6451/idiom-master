@@ -92,11 +92,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </button>
         </form>
 
-        <div className="login-demo">
-          <p><strong>Demo Accounts:</strong></p>
-          <p>Username: <code>demo</code> | Password: <code>demo123</code></p>
-          <p>Username: <code>admin</code> | Password: <code>admin123</code></p>
-        </div>
       </div>
     </div>
   );

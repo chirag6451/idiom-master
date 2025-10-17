@@ -18,7 +18,6 @@ const USERS = [
   {
     id: '1',
     username: 'admin',
-    // Password: admin123
     passwordHash: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
     name: 'Admin User',
     email: 'admin@figuroai.com'
@@ -26,7 +25,6 @@ const USERS = [
   {
     id: '2',
     username: 'demo',
-    // Password: demo123
     passwordHash: 'c3499c2729730a7f807efb8676a92dcb6f8a3f8f0528583e8e1e6e8e5e8e5e8e',
     name: 'Demo User',
     email: 'demo@figuroai.com'
@@ -34,10 +32,30 @@ const USERS = [
   {
     id: '3',
     username: 'chirag',
-    // Password: chirag123
     passwordHash: 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f',
     name: 'Chirag Kansara',
     email: 'chirag@figuroai.com'
+  },
+  {
+    id: '4',
+    username: 'tanvi',
+    passwordHash: '191b774f47f7ef1e8061d866e994010d2089e00cd5aa7e426baa38b7dc06fdee',
+    name: 'Tanvi',
+    email: 'tanvi@figuroai.com'
+  },
+  {
+    id: '5',
+    username: 'annika',
+    passwordHash: '499402add0eeb77558516066aa046232c9eaec0cbd22c1ed02d71797b2eaa35b',
+    name: 'Annika',
+    email: 'annika@figuroai.com'
+  },
+  {
+    id: '6',
+    username: 'rudra',
+    passwordHash: 'faec7023bcf087fe5dc0cfe00e1495263f52dc1802f681b55eb745ebe343779d',
+    name: 'Rudra',
+    email: 'rudra@figuroai.com'
   }
 ];
 
