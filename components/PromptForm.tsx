@@ -333,15 +333,14 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setIsLooping(false);
   };
 
-  // FIX: Define placeholder map with explicit type to avoid inference issues.
   const placeholderMap: Record<GenerationMode, string> = {
     [GenerationMode.TEXT_TO_VIDEO]: 'Describe the video you want to create...',
     [GenerationMode.FRAMES_TO_VIDEO]:
       'Describe motion between start and end frames...',
     [GenerationMode.REFERENCES_TO_VIDEO]:
-      'Describe a video using reference and style images...',
+      'Describe a video using reference and style images...'
   };
-  const promptPlaceholder = placeholderMap[generationMode as GenerationMode];
+  const promptPlaceholder = placeholderMap[generationMode];
 
   const renderMediaUploads = () => {
     if (generationMode === GenerationMode.FRAMES_TO_VIDEO) {
@@ -525,7 +524,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
             </button>
             {isModeSelectorOpen && (
               <div className="absolute bottom-full mb-2 w-60 bg-[#2c2c2e] border border-gray-600 rounded-lg shadow-xl overflow-hidden">
-                {Object.values(GenerationMode).map((mode) => (
+                {(Object.values(GenerationMode) as GenerationMode[]).map((mode) => (
                   <button
                     key={mode}
                     type="button"

@@ -3,47 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-export enum AppState {
-  IDLE,
-  LOADING,
-  SUCCESS,
-  ERROR,
-}
-
-export interface IdiomInfo {
-  meaning: string;
-  history: string;
-  examples: string[];
-}
-
-export type Language = 'English' | 'Hindi' | 'Gujarati';
-
-export type Favorite = {
-  idiom: string;
-  language: Language;
-};
-
-export enum ViewMode {
-  ALL,
-  FAVORITES,
-}
-
-export interface RelatedIdiomsResponse {
-  related_idioms: string[];
-}
-
-export type CrossLanguageIdioms = Partial<Record<Language, string>>;
-
-export interface SearchResult {
-  idiom: string;
-  language: Language;
-}
-
-
-// FIX: Add missing types for video generation feature.
 export enum VeoModel {
-  VEO_FAST = 'veo-3.1-fast-generate-preview',
   VEO = 'veo-3.1-generate-preview',
+  VEO_FAST = 'veo-3.1-fast-generate-preview',
 }
 
 export enum AspectRatio {
@@ -67,7 +29,10 @@ export interface ImageFile {
   base64: string;
 }
 
-export interface VideoFile extends ImageFile {}
+export interface VideoFile {
+  file: File;
+  base64: string;
+}
 
 export interface GenerateVideoParams {
   prompt: string;
@@ -82,3 +47,31 @@ export interface GenerateVideoParams {
   inputVideo: VideoFile | null;
   isLooping: boolean;
 }
+
+export type Language = string;
+
+export interface ItemInfo {
+    item: string;
+    meaning: string;
+    history: string;
+    examples: string[];
+}
+
+export type LearningMode = 'idioms' | 'words';
+
+export interface Favorite {
+    key: string;
+    phrase: string;
+    language: Language;
+    type: LearningMode;
+}
+
+export type ViewMode = 'All' | 'Favorites';
+
+export interface SearchResult {
+    phrase: string;
+    language: Language;
+    type: LearningMode;
+}
+
+export type CrossLanguageIdioms = Record<Language, string>;
