@@ -446,8 +446,10 @@ const App: React.FC = () => {
     setViewMode(newMode);
     
     if (newMode === ViewMode.FAVORITES) {
-      // Just switch to favorites view - don't auto-load anything
-      // The favorites list will be shown
+      // Clear current idiom to show the favorites list
+      setCurrentIdiom(null);
+      setIdiomInfo(null);
+      setAppState(AppState.IDLE);
       setCurrentFavoriteIndex(0);
     } else {
       // When switching back to All, fetch a new idiom
@@ -833,17 +835,27 @@ const App: React.FC = () => {
                 <ArrowDownTrayIcon className="w-5 h-5" />
                 Install App
             </button>
-            <button 
-                className="btn btn-secondary favorites-btn" 
-                onClick={handleToggleViewMode}
-                disabled={favorites.length === 0 && viewMode === ViewMode.ALL}
-            >
-              <StarIcon className="w-5 h-5" />
-              {viewMode === ViewMode.ALL ? 'My Favorites' : 'Show All'}
-              {favorites.length > 0 && viewMode === ViewMode.ALL && (
-                <span className="favorites-badge">{favorites.length}</span>
-              )}
-            </button>
+            {viewMode === ViewMode.FAVORITES ? (
+              <button 
+                  className="btn btn-primary" 
+                  onClick={handleToggleViewMode}
+              >
+                <ArrowUturnLeftIcon className="w-5 h-5" />
+                Back to Home
+              </button>
+            ) : (
+              <button 
+                  className="btn btn-secondary favorites-btn" 
+                  onClick={handleToggleViewMode}
+                  disabled={favorites.length === 0}
+              >
+                <StarIcon className="w-5 h-5" />
+                My Favorites
+                {favorites.length > 0 && (
+                  <span className="favorites-badge">{favorites.length}</span>
+                )}
+              </button>
+            )}
             <div className="language-selector">
                 <select 
                     className="language-select" 
