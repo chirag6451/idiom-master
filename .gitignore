@@ -33,4 +33,5 @@ deploy.sh
 # Backend
 server/.env
 server/figuroai.db
+server/figuroai-db.json
 server/node_modules

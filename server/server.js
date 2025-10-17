@@ -24,25 +24,10 @@ app.get('/api/health', (req, res) => {
 app.get('/api/favorites/:userId', (req, res) => {
   try {
     const { userId } = req.params;
+    const favorites = db.getFavorites(userId);
     
-    const stmt = db.prepare(`
-      SELECT id, idiom, language, meaning, history, examples, audio_url, saved_at
-      FROM favorites
-      WHERE user_id = ?
-      ORDER BY saved_at DESC
-      LIMIT 50
-    `);
-    
-    const favorites = stmt.all(userId);
-    
-    // Parse examples JSON
-    const parsed = favorites.map(fav => ({
-      ...fav,
-      examples: JSON.parse(fav.examples)
-    }));
-    
-    console.log(`✅ Retrieved ${parsed.length} favorites for user ${userId}`);
-    res.json({ favorites: parsed });
+    console.log(`✅ Retrieved ${favorites.length} favorites for user ${userId}`);
+    res.json({ favorites });
   } catch (error) {
     console.error('❌ Error fetching favorites:', error);
     res.status(500).json({ error: 'Failed to fetch favorites' });
@@ -68,28 +53,22 @@ app.post('/api/favorites', async (req, res) => {
       }
     }
     
-    // Insert into database
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO favorites 
-      (user_id, idiom, language, meaning, history, examples, audio_url, saved_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
-      userId,
+    // Save to database
+    const favorite = db.addFavorite({
+      user_id: userId,
       idiom,
       language,
-      info.meaning,
-      info.history,
-      JSON.stringify(info.examples),
-      audioUrl,
-      Date.now()
-    );
+      meaning: info.meaning,
+      history: info.history,
+      examples: info.examples,
+      audio_url: audioUrl,
+      saved_at: Date.now()
+    });
     
     console.log(`✅ Favorite saved for user ${userId}: ${idiom}`);
     res.json({ 
       success: true, 
-      id: result.lastInsertRowid,
+      id: favorite.id,
       audioUrl 
     });
   } catch (error) {
@@ -103,12 +82,8 @@ app.delete('/api/favorites/:userId/:idiom/:language', async (req, res) => {
   try {
     const { userId, idiom, language } = req.params;
     
-    // Get audio URL before deleting
-    const stmt = db.prepare(`
-      SELECT audio_url FROM favorites 
-      WHERE user_id = ? AND idiom = ? AND language = ?
-    `);
-    const favorite = stmt.get(userId, idiom, language);
+    // Get favorite before deleting
+    const favorite = db.deleteFavorite(userId, idiom, language);
     
     // Delete from S3 if audio exists
     if (favorite?.audio_url) {
@@ -118,13 +93,6 @@ app.delete('/api/favorites/:userId/:idiom/:language', async (req, res) => {
         console.warn('⚠️ Audio deletion failed:', error.message);
       }
     }
-    
-    // Delete from database
-    const deleteStmt = db.prepare(`
-      DELETE FROM favorites 
-      WHERE user_id = ? AND idiom = ? AND language = ?
-    `);
-    deleteStmt.run(userId, idiom, language);
     
     console.log(`✅ Favorite deleted for user ${userId}: ${idiom}`);
     res.json({ success: true });
@@ -140,12 +108,7 @@ app.post('/api/favorites/sync', async (req, res) => {
     const { userId, localFavorites } = req.body;
     
     // Get server favorites
-    const stmt = db.prepare(`
-      SELECT idiom, language, meaning, history, examples, audio_url, saved_at
-      FROM favorites
-      WHERE user_id = ?
-    `);
-    const serverFavorites = stmt.all(userId);
+    const serverFavorites = db.getFavorites(userId);
     
     // Merge logic: server wins for conflicts, add new local ones
     const merged = [...serverFavorites];
