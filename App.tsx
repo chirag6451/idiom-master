@@ -6,6 +6,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, IdiomInfo, Language, Favorite, ViewMode, CrossLanguageIdioms, SearchResult } from './types';
 import { getIdiomInfo, getTextToSpeech, getRelatedIdioms, getCrossLanguageIdioms, performIdiomSearch } from './services/geminiService';
 import { ArrowPathIcon, SpeakerWaveIcon, StopIcon, MagnifyingGlassIcon, StarIcon, ArrowDownTrayIcon, XMarkIcon, SparklesIcon, ArrowUturnLeftIcon } from './components/icons';
+import { Login } from './components/Login';
+import { getCurrentUser, saveCurrentUser, logout, User } from './services/authService';
 
 // --- Types for Config ---
 type LanguageConfig = {
@@ -81,6 +83,10 @@ const App: React.FC = () => {
   
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  
+  // User authentication state
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
 
   // Related Idioms State
   const [isShowingRelated, setIsShowingRelated] = useState(false);
@@ -118,21 +124,37 @@ const App: React.FC = () => {
     fetchConfig();
   }, []);
 
+  // Check for logged-in user on startup
   useEffect(() => {
+    const user = getCurrentUser();
+    if (user) {
+      console.log('✅ User already logged in:', user.username);
+      setCurrentUser(user);
+    } else {
+      console.log('⚠️ No user logged in, showing login screen');
+      setShowLogin(true);
+    }
+  }, []);
+  
+  useEffect(() => {
+    if (!currentUser) return; // Don't load favorites if not logged in
+    
     try {
-      const storedFavorites = localStorage.getItem('idiomFavorites');
-      console.log('Raw localStorage data:', storedFavorites?.substring(0, 100));
+      // Use user-specific localStorage key
+      const storageKey = `idiomFavorites_${currentUser.id}`;
+      const storedFavorites = localStorage.getItem(storageKey);
+      console.log(`Checking favorites for user ${currentUser.username}:`, storedFavorites?.substring(0, 100));
       if (storedFavorites) {
         const parsed = JSON.parse(storedFavorites);
-        console.log(`✅ Loaded ${parsed.length} favorites from localStorage:`, parsed.map(f => f.idiom));
+        console.log(`✅ Loaded ${parsed.length} favorites for ${currentUser.username}:`, parsed.map(f => f.idiom));
         setFavorites(parsed);
       } else {
-        console.log('⚠️ No favorites found in localStorage');
+        console.log(`⚠️ No favorites found for user ${currentUser.username}`);
       }
     } catch (error) {
       console.error("❌ Failed to load favorites from localStorage:", error);
     }
-  }, []);
+  }, [currentUser]);
   
   useEffect(() => {
       if (config && !currentIdiom) {
@@ -143,20 +165,24 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
+    if (!currentUser) return; // Don't save if not logged in
+    
     if (favorites.length === 0) {
       console.log('⚠️ Favorites array is empty, not saving to localStorage');
       return;
     }
     
     try {
+      // Use user-specific localStorage key
+      const storageKey = `idiomFavorites_${currentUser.id}`;
       const favoritesData = JSON.stringify(favorites);
-      localStorage.setItem('idiomFavorites', favoritesData);
+      localStorage.setItem(storageKey, favoritesData);
       
       // Log storage usage
       const sizeInBytes = new Blob([favoritesData]).size;
       const sizeInKB = (sizeInBytes / 1024).toFixed(2);
       const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
-      console.log(`💾 Saved ${favorites.length} favorites to localStorage: ${sizeInKB} KB (${sizeInMB} MB)`);
+      console.log(`💾 Saved ${favorites.length} favorites for ${currentUser.username}: ${sizeInKB} KB (${sizeInMB} MB)`);
       console.log('Favorites:', favorites.map(f => f.idiom));
       
       // Warn if approaching localStorage limit (typically 5-10MB)
@@ -169,7 +195,7 @@ const App: React.FC = () => {
         setToastMessage('⚠️ Storage full! Remove some favorites to save new ones.');
       }
     }
-  }, [favorites]);
+  }, [favorites, currentUser]);
   
   // Auto-hide toast after 3 seconds
   useEffect(() => {
@@ -199,6 +225,23 @@ const App: React.FC = () => {
     setRelatedError(null);
     originalIdiomRef.current = null;
   }
+  
+  const handleLogin = (user: User) => {
+    console.log('✅ User logged in:', user.username);
+    setCurrentUser(user);
+    saveCurrentUser(user);
+    setShowLogin(false);
+    setToastMessage(`Welcome back, ${user.name}! 👋`);
+  };
+  
+  const handleLogout = () => {
+    console.log('👋 User logged out');
+    logout();
+    setCurrentUser(null);
+    setFavorites([]);
+    setShowLogin(true);
+    setToastMessage('Logged out successfully');
+  };
 
   const fetchIdiomDetails = useCallback(async (idiom: string, lang: Language) => {
     if (!config) return;
@@ -835,6 +878,18 @@ const App: React.FC = () => {
           <h1 className="title">FiguroAI</h1>
         </div>
         <div className="controls-container">
+            {currentUser && (
+              <div className="user-info">
+                <span className="user-name">👤 {currentUser.name}</span>
+                <button 
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleLogout}
+                    title="Logout"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
             <button 
                 className="btn btn-secondary"
                 onClick={() => setIsInstallModalOpen(true)}
@@ -932,6 +987,9 @@ const App: React.FC = () => {
         <p className="copyright">&copy; 2024 FiguroAI.com | Chirag Kansara</p>
       </footer>
       {renderInstallModal()}
+      
+      {/* Login Modal */}
+      {showLogin && <Login onLogin={handleLogin} />}
       
       {/* Toast Notification */}
       {toastMessage && (
