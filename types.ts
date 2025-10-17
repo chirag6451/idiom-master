@@ -21,6 +21,8 @@ export type Language = string;
 export type Favorite = {
   idiom: string;
   language: Language;
+  info: IdiomInfo; // Store full idiom info for offline access
+  savedAt: number; // Timestamp when saved
 };
 
 export enum ViewMode {

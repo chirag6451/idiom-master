@@ -78,6 +78,9 @@ const App: React.FC = () => {
 
   // Install Modal State
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  
+  // Toast notification state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Related Idioms State
   const [isShowingRelated, setIsShowingRelated] = useState(false);
@@ -141,11 +144,25 @@ const App: React.FC = () => {
       console.error("Failed to save favorites to localStorage:", error);
     }
   }, [favorites]);
+  
+  // Auto-hide toast after 3 seconds
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
 
   const getAudioContext = useCallback(() => {
     if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      // Create AudioContext with proper mobile browser support
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      audioContextRef.current = new AudioContextClass({ 
+        sampleRate: 24000,
+        latencyHint: 'interactive' // Better for mobile
+      });
+      console.log('AudioContext created, state:', audioContextRef.current.state);
     }
     return audioContextRef.current;
   }, []);
@@ -216,8 +233,15 @@ const App: React.FC = () => {
     const nextIndex = (currentFavoriteIndex + 1) % favorites.length;
     setCurrentFavoriteIndex(nextIndex);
     const nextFavorite = favorites[nextIndex];
-    fetchIdiomDetails(nextFavorite.idiom, nextFavorite.language);
-  }, [favorites, currentFavoriteIndex, fetchIdiomDetails, fetchNewIdiom]);
+    
+    // Load from offline storage instead of making API call
+    setAppState(AppState.LOADING);
+    setCurrentIdiom(nextFavorite.idiom);
+    setLanguage(nextFavorite.language);
+    setIdiomInfo(nextFavorite.info);
+    setAppState(AppState.SUCCESS);
+    setCrossLanguageIdioms(null);
+  }, [favorites, currentFavoriteIndex, fetchNewIdiom]);
 
   const handleNextIdiom = () => {
     if (viewMode === ViewMode.FAVORITES) {
@@ -269,6 +293,7 @@ const App: React.FC = () => {
   const handleToggleAudio = async () => {
     if (isAudioPlaying && audioSourceRef.current) {
         audioSourceRef.current.stop();
+        setIsAudioPlaying(false);
         return;
     }
 
@@ -281,18 +306,34 @@ const App: React.FC = () => {
 
     setIsAudioLoading(true);
     setErrorMessage(null);
+    
     try {
-      const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.examples[0]}`;
-      const base64Audio = await getTextToSpeech(textToSpeak);
+      // Create or get audio context - must be done in user gesture for mobile
       const audioContext = getAudioContext();
       
+      // Resume audio context if suspended (required for mobile browsers)
       if (audioContext.state === 'suspended') {
+        console.log('Resuming suspended audio context...');
         await audioContext.resume();
       }
-
-      const audioBytes = decode(base64Audio);
-      const audioBuffer = await decodeAudioData(audioBytes, audioContext, 24000, 1);
       
+      console.log('AudioContext state:', audioContext.state);
+      
+      // Fetch the audio data
+      const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.examples[0]}`;
+      console.log('Fetching TTS for:', textToSpeak);
+      
+      const base64Audio = await getTextToSpeech(textToSpeak);
+      console.log('Received audio data, length:', base64Audio.length);
+
+      // Decode the audio
+      const audioBytes = decode(base64Audio);
+      console.log('Decoded audio bytes:', audioBytes.length);
+      
+      const audioBuffer = await decodeAudioData(audioBytes, audioContext, 24000, 1);
+      console.log('Audio buffer created, duration:', audioBuffer.duration);
+      
+      // Create and play the audio source
       const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContext.destination);
@@ -300,33 +341,47 @@ const App: React.FC = () => {
       audioSourceRef.current = source;
       
       source.onended = () => {
+          console.log('Audio playback ended');
           setIsAudioPlaying(false);
           audioSourceRef.current = null;
       };
       
-      source.start();
+      // Start playback
+      source.start(0);
+      console.log('Audio playback started');
+      
       setIsAudioLoading(false);
       setIsAudioPlaying(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to play audio:", err);
-      setErrorMessage("Sorry, couldn't play the audio.");
+      console.error("Error details:", err.message, err.stack);
+      setErrorMessage(`Audio playback failed: ${err.message || 'Unknown error'}`);
       setIsAudioLoading(false);
       setIsAudioPlaying(false);
     }
   };
   
   const handleToggleFavorite = () => {
-    if (!currentIdiom) return;
+    if (!currentIdiom || !idiomInfo) return;
     const isFavorite = favorites.some(fav => fav.idiom === currentIdiom && fav.language === language);
     
     if (isFavorite) {
       const updatedFavorites = favorites.filter(fav => !(fav.idiom === currentIdiom && fav.language === language));
       setFavorites(updatedFavorites);
+      setToastMessage('Removed from favorites');
       if(viewMode === ViewMode.FAVORITES && updatedFavorites.length === 0) {
         setViewMode(ViewMode.ALL);
       }
     } else {
-      setFavorites([...favorites, { idiom: currentIdiom, language }]);
+      // Save complete idiom information for offline access
+      const newFavorite: Favorite = {
+        idiom: currentIdiom,
+        language,
+        info: idiomInfo,
+        savedAt: Date.now()
+      };
+      setFavorites([...favorites, newFavorite]);
+      setToastMessage('✨ Saved to favorites! Available offline.');
     }
   };
 
@@ -335,10 +390,15 @@ const App: React.FC = () => {
     setViewMode(newMode);
     
     if (newMode === ViewMode.FAVORITES) {
-      setCurrentFavoriteIndex(-1);
+      setCurrentFavoriteIndex(0);
       if (favorites.length > 0) {
           const firstFavorite = favorites[0];
-          fetchIdiomDetails(firstFavorite.idiom, firstFavorite.language);
+          // Load from offline storage
+          setCurrentIdiom(firstFavorite.idiom);
+          setLanguage(firstFavorite.language);
+          setIdiomInfo(firstFavorite.info);
+          setAppState(AppState.SUCCESS);
+          setCrossLanguageIdioms(null);
       }
     } else {
       fetchNewIdiom();
@@ -678,12 +738,15 @@ const App: React.FC = () => {
                 Install App
             </button>
             <button 
-                className="btn btn-secondary" 
+                className="btn btn-secondary favorites-btn" 
                 onClick={handleToggleViewMode}
                 disabled={favorites.length === 0 && viewMode === ViewMode.ALL}
             >
               <StarIcon className="w-5 h-5" />
               {viewMode === ViewMode.ALL ? 'My Favorites' : 'Show All'}
+              {favorites.length > 0 && viewMode === ViewMode.ALL && (
+                <span className="favorites-badge">{favorites.length}</span>
+              )}
             </button>
             <div className="language-selector">
                 <select 
@@ -732,6 +795,13 @@ const App: React.FC = () => {
         <p className="copyright">&copy; 2024 FiguroAI.com | Chirag Kansara</p>
       </footer>
       {renderInstallModal()}
+      
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="toast-notification">
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 };

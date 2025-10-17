@@ -90,27 +90,44 @@ export async function getIdiomInfo(
 }
 
 export async function getTextToSpeech(text: string): Promise<string> {
-  const ai = getAi();
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-tts',
-    contents: [{ parts: [{ text }] }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Kore' }, // A versatile voice
+  try {
+    console.log('[TTS] Starting text-to-speech request for:', text.substring(0, 50) + '...');
+    const ai = getAi();
+    
+    // Add timeout to prevent infinite loading
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('TTS request timed out after 30 seconds')), 30000);
+    });
+    
+    const requestPromise = ai.models.generateContent({
+      model: 'gemini-2.5-flash-preview-tts',
+      contents: [{ parts: [{ text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Kore' }, // A versatile voice
+          },
         },
       },
-    },
-  });
-  
-  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    });
+    
+    const response = await Promise.race([requestPromise, timeoutPromise]);
+    console.log('[TTS] Received response from API');
+    
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
-  if (!base64Audio) {
-    throw new Error('No audio data received from API.');
+    if (!base64Audio) {
+      console.error('[TTS] No audio data in response:', response);
+      throw new Error('No audio data received from API.');
+    }
+    
+    console.log('[TTS] Audio data received, length:', base64Audio.length);
+    return base64Audio;
+  } catch (error: any) {
+    console.error('[TTS] Error:', error);
+    throw new Error(`Text-to-speech failed: ${error.message || 'Unknown error'}`);
   }
-  
-  return base64Audio;
 }
 
 export async function getRelatedIdioms(
