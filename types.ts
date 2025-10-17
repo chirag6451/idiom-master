@@ -34,6 +34,11 @@ export interface RelatedIdiomsResponse {
 
 export type CrossLanguageIdioms = Partial<Record<Language, string>>;
 
+export interface SearchResult {
+  idiom: string;
+  language: Language;
+}
+
 
 // FIX: Add missing types for video generation feature.
 export enum VeoModel {

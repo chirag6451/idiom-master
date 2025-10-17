@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { GoogleGenAI, Modality, Type } from '@google/genai';
-import { IdiomInfo, RelatedIdiomsResponse, CrossLanguageIdioms, Language } from '../types';
+import { IdiomInfo, RelatedIdiomsResponse, CrossLanguageIdioms, Language, SearchResult } from '../types';
 
 let ai: GoogleGenAI;
 
@@ -142,4 +142,69 @@ export async function getCrossLanguageIdioms(
   
   const jsonText = response.text.trim();
   return JSON.parse(jsonText);
+}
+
+export async function performIdiomSearch(
+  query: string,
+): Promise<SearchResult[]> {
+  const ai = getAi();
+
+  const prompt = `
+    A user is searching for an idiom using the query: "${query}".
+    The query might be an exact idiom, a partial idiom, contain spelling mistakes, or be a description of an idiom.
+
+    Your task is to act as an expert linguist. Based on the user's query, identify the most likely idiom they are looking for.
+    Then, find up to 4 other highly relevant idioms. The idioms can be from any of these languages: English, Hindi, Gujarati.
+
+    Return a JSON object containing an array of up to 5 search results in the "matches" property.
+    Each result must be an object with the full, correct idiom text and its language.
+    The most likely match should be the first element in the array.
+    If the user's query is a perfect match for a known idiom (e.g., "a walk in the park"), that idiom should be the first result.
+    If no relevant idioms can be found, return an empty array in the "matches" property.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          matches: {
+            type: Type.ARRAY,
+            description: "An array of matching idioms.",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                idiom: {
+                  type: Type.STRING,
+                  description: "The full text of the matching idiom."
+                },
+                language: {
+                  type: Type.STRING,
+                  description: "The language of the idiom (must be one of 'English', 'Hindi', 'Gujarati')."
+                }
+              },
+              required: ['idiom', 'language']
+            }
+          }
+        },
+        required: ['matches']
+      }
+    }
+  });
+
+  const jsonText = response.text.trim();
+  const parsedResponse = JSON.parse(jsonText);
+  
+  // Ensure we only return results with languages supported by the app
+  const validLanguages: Language[] = ['English', 'Hindi', 'Gujarati'];
+  const filteredMatches = (parsedResponse.matches || []).filter(
+      (match: any): match is SearchResult => 
+          typeof match.idiom === 'string' &&
+          typeof match.language === 'string' &&
+          validLanguages.includes(match.language as Language)
+  );
+  return filteredMatches;
 }

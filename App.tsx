@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppState, IdiomInfo, Language, Favorite, ViewMode, CrossLanguageIdioms } from './types';
-import { getIdiomInfo, getTextToSpeech, getRelatedIdioms, getCrossLanguageIdioms } from './services/geminiService';
+import { AppState, IdiomInfo, Language, Favorite, ViewMode, CrossLanguageIdioms, SearchResult } from './types';
+import { getIdiomInfo, getTextToSpeech, getRelatedIdioms, getCrossLanguageIdioms, performIdiomSearch } from './services/geminiService';
 import { ArrowPathIcon, SpeakerWaveIcon, StopIcon, MagnifyingGlassIcon, StarIcon, ArrowDownTrayIcon, XMarkIcon, SparklesIcon, ArrowUturnLeftIcon } from './components/icons';
 
 // --- Data ---
@@ -63,8 +63,9 @@ const App: React.FC = () => {
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<{ idiom: string; language: Language }[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
   
   // Favorites State
   const [favorites, setFavorites] = useState<Favorite[]>([]);
@@ -196,27 +197,29 @@ const App: React.FC = () => {
     fetchNewIdiom(newLanguage);
   }
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) {
       setIsSearching(false);
+      setSearchResults([]);
       return;
     }
-    setViewMode(ViewMode.ALL); // Revert to all mode when searching
-
-    const lowerCaseQuery = searchQuery.toLowerCase();
-    const results: { idiom: string; language: Language }[] = [];
-    
-    (Object.keys(idioms) as Language[]).forEach(lang => {
-      idioms[lang]
-        .filter(idiom => idiom.toLowerCase().includes(lowerCaseQuery))
-        .forEach(idiom => {
-          results.push({ idiom, language: lang });
-        });
-    });
-
-    setSearchResults(results);
+    setViewMode(ViewMode.ALL);
     setIsSearching(true);
+    setIsSearchLoading(true);
+    setSearchResults([]);
+    setErrorMessage(null);
+
+    try {
+      const results = await performIdiomSearch(searchQuery);
+      setSearchResults(results);
+    } catch (err) {
+      console.error("Search failed:", err);
+      setErrorMessage("Sorry, the search failed. Please try again.");
+      setSearchResults([]);
+    } finally {
+      setIsSearchLoading(false);
+    }
   };
 
   const handleResultClick = (result: { idiom: string; language: Language }) => {
@@ -467,10 +470,20 @@ const App: React.FC = () => {
     }
 
     if (isSearching) {
+        if (isSearchLoading) {
+            return (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <p>Searching for idioms...</p>
+              </div>
+            );
+        }
+
         return (
             <div className="search-results-container">
                 <h3 className="search-results-header">Results for "{searchQuery}"</h3>
-                {searchResults.length > 0 ? (
+                {errorMessage && <p className="error-message">{errorMessage}</p>}
+                {!errorMessage && searchResults.length > 0 ? (
                     <ul className="search-results-list">
                         {searchResults.map((result, index) => (
                             <li key={index}>
@@ -482,6 +495,7 @@ const App: React.FC = () => {
                         ))}
                     </ul>
                 ) : (
+                    !errorMessage &&
                     <div className="placeholder-container">
                         <p>No idioms found matching your search.</p>
                     </div>
@@ -618,9 +632,10 @@ const App: React.FC = () => {
                     placeholder="Search for an idiom..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    disabled={isSearchLoading}
                 />
-                <button type="submit" className="btn search-btn" aria-label="Search">
-                    <MagnifyingGlassIcon className="w-5 h-5" />
+                <button type="submit" className="btn search-btn" aria-label="Search" disabled={isSearchLoading}>
+                    {isSearchLoading ? <div className="btn-spinner"></div> : <MagnifyingGlassIcon className="w-5 h-5" />}
                 </button>
             </form>
         </div>
