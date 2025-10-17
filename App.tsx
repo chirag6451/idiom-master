@@ -157,11 +157,12 @@ const App: React.FC = () => {
   }, [currentUser]);
   
   useEffect(() => {
-      if (config && !currentIdiom) {
+      // Only fetch idiom if user is logged in
+      if (config && !currentIdiom && currentUser) {
         fetchNewIdiom(language);
       }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config, language]);
+  }, [config, language, currentUser]);
 
 
   useEffect(() => {
@@ -867,6 +868,15 @@ const App: React.FC = () => {
           </div>
         </main>
       </div>
+    );
+  }
+
+  // Show login screen if not logged in
+  if (!currentUser) {
+    return (
+      <>
+        {showLogin && <Login onLogin={handleLogin} />}
+      </>
     );
   }
 
