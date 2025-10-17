@@ -28,6 +28,11 @@ export enum ViewMode {
   FAVORITES,
 }
 
+export interface RelatedIdiomsResponse {
+  related_idioms: string[];
+}
+
+
 // FIX: Add missing types for video generation feature.
 export enum VeoModel {
   VEO_FAST = 'veo-3.1-fast-generate-preview',

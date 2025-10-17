@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { GoogleGenAI, Modality, Type } from '@google/genai';
-import { IdiomInfo } from '../types';
+import { IdiomInfo, RelatedIdiomsResponse } from '../types';
 
 let ai: GoogleGenAI;
 
@@ -74,4 +74,35 @@ export async function getTextToSpeech(text: string): Promise<string> {
   }
   
   return base64Audio;
+}
+
+export async function getRelatedIdioms(
+  idiom: string,
+  language: string,
+): Promise<string[]> {
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: `Find idioms that are related to or have a similar meaning to "${idiom}" in the ${language} language. Provide a list of 5 such idioms.`,
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          related_idioms: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.STRING,
+            },
+            description: `An array of 5 idioms related to "${idiom}".`,
+          },
+        },
+        required: ['related_idioms'],
+      },
+    },
+  });
+
+  const jsonText = response.text.trim();
+  const parsed: RelatedIdiomsResponse = JSON.parse(jsonText);
+  return parsed.related_idioms;
 }

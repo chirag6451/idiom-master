@@ -4,8 +4,8 @@
 */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, IdiomInfo, Language, Favorite, ViewMode } from './types';
-import { getIdiomInfo, getTextToSpeech } from './services/geminiService';
-import { ArrowPathIcon, SpeakerWaveIcon, StopIcon, MagnifyingGlassIcon, StarIcon } from './components/icons';
+import { getIdiomInfo, getTextToSpeech, getRelatedIdioms } from './services/geminiService';
+import { ArrowPathIcon, SpeakerWaveIcon, StopIcon, MagnifyingGlassIcon, StarIcon, ArrowDownTrayIcon, XMarkIcon, SparklesIcon, ArrowUturnLeftIcon } from './components/icons';
 
 // --- Data ---
 const idioms: Record<Language, string[]> = {
@@ -70,6 +70,17 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.ALL);
   const [currentFavoriteIndex, setCurrentFavoriteIndex] = useState(0);
 
+  // Install Modal State
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+
+  // Related Idioms State
+  const [isShowingRelated, setIsShowingRelated] = useState(false);
+  const [relatedIdioms, setRelatedIdioms] = useState<string[] | null>(null);
+  const [relatedError, setRelatedError] = useState<string | null>(null);
+  const [isRelatedLoading, setIsRelatedLoading] = useState(false);
+  const originalIdiomRef = useRef<{ idiom: string; lang: Language } | null>(null);
+
+
   // --- Effects ---
   useEffect(() => {
     try {
@@ -100,10 +111,18 @@ const App: React.FC = () => {
     return audioContextRef.current;
   }, []);
 
+  const resetRelatedState = () => {
+    setIsShowingRelated(false);
+    setRelatedIdioms(null);
+    setRelatedError(null);
+    originalIdiomRef.current = null;
+  }
+
   const fetchIdiomDetails = useCallback(async (idiom: string, lang: Language) => {
     if (audioSourceRef.current) {
       audioSourceRef.current.stop();
     }
+    resetRelatedState();
     setAppState(AppState.LOADING);
     setIdiomInfo(null);
     setErrorMessage(null);
@@ -265,10 +284,132 @@ const App: React.FC = () => {
       fetchNewIdiom();
     }
   };
+  
+  const handleShowRelated = async () => {
+    if (!currentIdiom || appState !== AppState.SUCCESS) return;
+
+    originalIdiomRef.current = { idiom: currentIdiom, lang: language };
+    setIsShowingRelated(true);
+    setIsRelatedLoading(true);
+    setRelatedIdioms(null);
+    setRelatedError(null);
+
+    try {
+        const result = await getRelatedIdioms(currentIdiom, language);
+        setRelatedIdioms(result);
+    } catch (err) {
+        console.error("Failed to get related idioms:", err);
+        setRelatedError("Could not find related idioms. Please try again later.");
+    } finally {
+        setIsRelatedLoading(false);
+    }
+  };
+  
+  const handleBackToOriginal = () => {
+    if (originalIdiomRef.current) {
+        fetchIdiomDetails(originalIdiomRef.current.idiom, originalIdiomRef.current.lang);
+    }
+    resetRelatedState();
+  };
+  
+  const handleSelectRelated = (idiom: string) => {
+    // When selecting a related idiom, we stay in the same language.
+    fetchIdiomDetails(idiom, language);
+    resetRelatedState();
+  };
 
   const isCurrentFavorite = favorites.some(fav => fav.idiom === currentIdiom && fav.language === language);
   
+  const renderInstallModal = () => {
+    if (!isInstallModalOpen) return null;
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    return (
+        <div className="modal-overlay" onClick={() => setIsInstallModalOpen(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+                <button className="modal-close-btn" onClick={() => setIsInstallModalOpen(false)} aria-label="Close">
+                    <XMarkIcon className="w-6 h-6" />
+                </button>
+                <h3 className="modal-title">Install Idiom Master</h3>
+                <div className="modal-instructions">
+                    {isIOS && (
+                        <>
+                            <p>To install the app on your Apple device:</p>
+                            <ol>
+                                <li>Tap the <strong>Share</strong> icon in Safari.</li>
+                                <li>Scroll down and tap <strong>'Add to Home Screen'</strong>.</li>
+                                <li>Tap <strong>'Add'</strong> in the top right corner.</li>
+                            </ol>
+                        </>
+                    )}
+                    {isAndroid && (
+                         <>
+                            <p>To install the app on your Android device:</p>
+                            <ol>
+                                <li>Tap the <strong>Menu</strong> icon (3 dots) in Chrome.</li>
+                                <li>Tap <strong>'Install app'</strong> or <strong>'Add to Home Screen'</strong>.</li>
+                                <li>Follow the on-screen prompts.</li>
+                            </ol>
+                        </>
+                    )}
+                    {!isIOS && !isAndroid && (
+                        <p>Open this page on your mobile device to install the app to your home screen for easy access.</p>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+  };
+  
   const renderCardContent = () => {
+    if (isShowingRelated) {
+        if (isRelatedLoading) {
+             return (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <p>Finding related idioms...</p>
+              </div>
+            );
+        }
+        if (relatedError) {
+             return (
+              <div className="error-container">
+                <h3>Oops!</h3>
+                <p>{relatedError}</p>
+                <button onClick={handleBackToOriginal} className="btn btn-secondary mt-4">Back</button>
+              </div>
+            );
+        }
+        return (
+            <div className="related-container">
+                <div className="related-header">
+                    <h3>Related to "{originalIdiomRef.current?.idiom}"</h3>
+                    <button onClick={handleBackToOriginal} className="btn btn-secondary">
+                        <ArrowUturnLeftIcon className="w-5 h-5"/>
+                        Back
+                    </button>
+                </div>
+                {relatedIdioms && relatedIdioms.length > 0 ? (
+                    <ul className="related-list">
+                        {relatedIdioms.map((idiom, index) => (
+                            <li key={index}>
+                                <button className="related-item" onClick={() => handleSelectRelated(idiom)}>
+                                    {idiom}
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="placeholder-container">
+                        <p>No related idioms were found.</p>
+                    </div>
+                )}
+            </div>
+        )
+    }
+
     if (isSearching) {
         return (
             <div className="search-results-container">
@@ -386,6 +527,13 @@ const App: React.FC = () => {
         <h1 className="title">Idiom Master</h1>
         <div className="controls-container">
             <button 
+                className="btn btn-secondary"
+                onClick={() => setIsInstallModalOpen(true)}
+            >
+                <ArrowDownTrayIcon className="w-5 h-5" />
+                Install App
+            </button>
+            <button 
                 className="btn btn-secondary" 
                 onClick={handleToggleViewMode}
                 disabled={favorites.length === 0 && viewMode === ViewMode.ALL}
@@ -426,11 +574,16 @@ const App: React.FC = () => {
       </main>
       
       <footer className="controls">
-        <button onClick={handleNextIdiom} disabled={appState === AppState.LOADING} className="btn btn-primary">
+        <button onClick={handleNextIdiom} disabled={appState === AppState.LOADING || isShowingRelated} className="btn btn-primary">
           <ArrowPathIcon className="w-5 h-5" />
           Next Idiom
         </button>
+        <button onClick={handleShowRelated} disabled={appState !== AppState.SUCCESS || isShowingRelated} className="btn btn-secondary">
+          <SparklesIcon className="w-5 h-5" />
+          Related Idioms
+        </button>
       </footer>
+      {renderInstallModal()}
     </div>
   );
 };
