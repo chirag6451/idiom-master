@@ -471,6 +471,53 @@ body {
     margin-bottom: 0.75rem;
 }
 
+/* Cross-Language Section */
+.cross-lang-section {
+    padding-top: 1.5rem;
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.mini-loading-container {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-tertiary);
+    font-size: 0.9rem;
+}
+
+.cross-lang-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.cross-lang-item {
+    color: var(--text-tertiary);
+}
+
+.cross-lang-item strong {
+    color: var(--text-secondary);
+    margin-right: 0.5rem;
+}
+
+.cross-lang-item button {
+    background: none;
+    border: none;
+    color: var(--accent-color);
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+    font-size: 1rem;
+    font-family: inherit;
+    text-align: left;
+}
+
+.cross-lang-item button:hover {
+    color: var(--accent-color-hover);
+}
+
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

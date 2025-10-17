@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppState, IdiomInfo, Language, Favorite, ViewMode } from './types';
-import { getIdiomInfo, getTextToSpeech, getRelatedIdioms } from './services/geminiService';
+import { AppState, IdiomInfo, Language, Favorite, ViewMode, CrossLanguageIdioms } from './types';
+import { getIdiomInfo, getTextToSpeech, getRelatedIdioms, getCrossLanguageIdioms } from './services/geminiService';
 import { ArrowPathIcon, SpeakerWaveIcon, StopIcon, MagnifyingGlassIcon, StarIcon, ArrowDownTrayIcon, XMarkIcon, SparklesIcon, ArrowUturnLeftIcon } from './components/icons';
 
 // --- Data ---
@@ -13,6 +13,7 @@ const idioms: Record<Language, string[]> = {
   Hindi: ['नौ दो ग्यारह होना', 'अंधों में काना राजा', 'ऊँट के मुँह में जीरा', 'घर का भेदी लंका ढाए'],
   Gujarati: ['પેટમાં બિલાડા બોલવા', 'પથ્થર પર પાણી', 'પાણીમાં બેસી જવું', 'મગનું નામ મરી ન પાડવું'],
 };
+const allLanguages = Object.keys(idioms) as Language[];
 
 // --- Audio Utilities ---
 // FIX: Changed return type from `UintArray` to `Uint8Array`.
@@ -80,6 +81,10 @@ const App: React.FC = () => {
   const [isRelatedLoading, setIsRelatedLoading] = useState(false);
   const originalIdiomRef = useRef<{ idiom: string; lang: Language } | null>(null);
 
+  // Cross-Language State
+  const [crossLanguageIdioms, setCrossLanguageIdioms] = useState<CrossLanguageIdioms | null>(null);
+  const [isCrossLangLoading, setIsCrossLangLoading] = useState(false);
+
 
   // --- Effects ---
   useEffect(() => {
@@ -128,11 +133,26 @@ const App: React.FC = () => {
     setErrorMessage(null);
     setCurrentIdiom(idiom);
     setLanguage(lang);
+    setCrossLanguageIdioms(null);
 
     try {
       const info = await getIdiomInfo(idiom, lang);
       setIdiomInfo(info);
       setAppState(AppState.SUCCESS);
+
+      // Fetch cross-language idioms in the background
+      setIsCrossLangLoading(true);
+      try {
+        const crossLangResult = await getCrossLanguageIdioms(idiom, lang, allLanguages);
+        setCrossLanguageIdioms(crossLangResult);
+      } catch (crossErr) {
+        console.error("Failed to get cross-language idioms:", crossErr);
+        // Don't show an error, just fail gracefully
+        setCrossLanguageIdioms({});
+      } finally {
+        setIsCrossLangLoading(false);
+      }
+
     } catch (err) {
       console.error("Failed to get idiom info:", err);
       setErrorMessage("Sorry, I couldn't find information for this idiom. Please try another one.");
@@ -362,6 +382,42 @@ const App: React.FC = () => {
         </div>
     );
   };
+
+  const renderCrossLanguageSection = () => {
+    if (isCrossLangLoading) {
+      return (
+        <div className="idiom-section cross-lang-section">
+          <h3>In Other Languages</h3>
+          <div className="mini-loading-container">
+            <div className="btn-spinner"></div>
+            <span>Finding translations...</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (!crossLanguageIdioms || Object.keys(crossLanguageIdioms).length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="idiom-section cross-lang-section">
+        <h3>In Other Languages</h3>
+        <div className="cross-lang-list">
+          {Object.entries(crossLanguageIdioms).map(([lang, idiom]) => (
+            idiom && (
+              <div key={lang} className="cross-lang-item">
+                <strong>In {lang}:</strong>
+                <button onClick={() => fetchIdiomDetails(idiom, lang as Language)}>
+                  {idiom}
+                </button>
+              </div>
+            )
+          ))}
+        </div>
+      </div>
+    );
+  }
   
   const renderCardContent = () => {
     if (isShowingRelated) {
@@ -510,6 +566,7 @@ const App: React.FC = () => {
                 ))}
               </ul>
             </div>
+            {renderCrossLanguageSection()}
           </>
         );
       default:

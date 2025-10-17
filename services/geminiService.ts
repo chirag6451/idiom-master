@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { GoogleGenAI, Modality, Type } from '@google/genai';
-import { IdiomInfo, RelatedIdiomsResponse } from '../types';
+import { IdiomInfo, RelatedIdiomsResponse, CrossLanguageIdioms, Language } from '../types';
 
 let ai: GoogleGenAI;
 
@@ -105,4 +105,41 @@ export async function getRelatedIdioms(
   const jsonText = response.text.trim();
   const parsed: RelatedIdiomsResponse = JSON.parse(jsonText);
   return parsed.related_idioms;
+}
+
+export async function getCrossLanguageIdioms(
+  idiom: string,
+  sourceLanguage: Language,
+  allLanguages: Language[],
+): Promise<CrossLanguageIdioms> {
+  const ai = getAi();
+  const targetLanguages = allLanguages.filter(lang => lang !== sourceLanguage);
+  
+  if (targetLanguages.length === 0) {
+    return {};
+  }
+
+  const schemaProperties = targetLanguages.reduce((acc, lang) => {
+    acc[lang] = {
+      type: Type.STRING,
+      description: `The closest equivalent idiom in ${lang}. If no direct equivalent exists, provide a short phrase that captures the same meaning.`,
+    };
+    return acc;
+  }, {} as Record<string, { type: Type, description: string }>);
+
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: `For the ${sourceLanguage} idiom "${idiom}", find the closest equivalent or a similar-meaning idiom in each of the following languages: ${targetLanguages.join(', ')}.`,
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: schemaProperties,
+      },
+    },
+  });
+  
+  const jsonText = response.text.trim();
+  return JSON.parse(jsonText);
 }
