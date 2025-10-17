@@ -13,7 +13,7 @@ export enum AppState {
 export interface IdiomInfo {
   meaning: string;
   history: string;
-  example: string;
+  examples: string[];
 }
 
 export type Language = 'English' | 'Hindi' | 'Gujarati';

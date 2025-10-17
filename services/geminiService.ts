@@ -21,7 +21,7 @@ export async function getIdiomInfo(
   const ai = getAi();
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: `Explain the idiom "${idiom}" in ${language}. Provide its meaning, a brief history or origin, and an example sentence.`,
+    contents: `Explain the idiom "${idiom}" in ${language}. Provide its meaning, a brief history or origin, and at least five distinct example sentences.`,
     config: {
       responseMimeType: 'application/json',
       responseSchema: {
@@ -35,12 +35,15 @@ export async function getIdiomInfo(
             type: Type.STRING,
             description: `The history or origin of the idiom "${idiom}".`,
           },
-          example: {
-            type: Type.STRING,
-            description: `An example sentence using the idiom "${idiom}".`,
+          examples: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.STRING,
+            },
+            description: `An array of at least five example sentences using the idiom "${idiom}".`,
           },
         },
-        required: ['meaning', 'history', 'example'],
+        required: ['meaning', 'history', 'examples'],
       },
     },
   });

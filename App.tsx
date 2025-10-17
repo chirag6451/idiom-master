@@ -194,10 +194,15 @@ const App: React.FC = () => {
 
     if (!idiomInfo || isAudioLoading) return;
 
+    if (!idiomInfo.examples || idiomInfo.examples.length === 0) {
+      setErrorMessage("No example available to play.");
+      return;
+    }
+
     setIsAudioLoading(true);
     setErrorMessage(null);
     try {
-      const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.example}`;
+      const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.examples[0]}`;
       const base64Audio = await getTextToSpeech(textToSpeak);
       const audioContext = getAudioContext();
       
@@ -357,8 +362,12 @@ const App: React.FC = () => {
               <p>{idiomInfo.meaning} {idiomInfo.history}</p>
             </div>
             <div className="idiom-section">
-              <h3>Usage Example</h3>
-              <p><em>"{idiomInfo.example}"</em></p>
+              <h3>Usage Examples</h3>
+              <ul className="example-list">
+                {idiomInfo.examples.map((ex, index) => (
+                  <li key={index}><em>"{ex}"</em></li>
+                ))}
+              </ul>
             </div>
           </>
         );
