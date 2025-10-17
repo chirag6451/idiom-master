@@ -9,7 +9,14 @@ let ai: GoogleGenAI;
 
 function getAi() {
   if (!ai) {
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Check for API key in environment variables
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY;
+    
+    if (!apiKey) {
+      throw new Error('API_KEY is not configured. Please set VITE_GEMINI_API_KEY in your environment.');
+    }
+    
+    ai = new GoogleGenAI({ apiKey });
   }
   return ai;
 }
@@ -18,38 +25,68 @@ export async function getIdiomInfo(
   idiom: string,
   language: string,
 ): Promise<IdiomInfo> {
-  const ai = getAi();
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: `Explain the idiom "${idiom}" in ${language}. Provide its meaning, a brief history or origin, and at least five distinct example sentences.`,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          meaning: {
-            type: Type.STRING,
-            description: `The literal meaning of the idiom "${idiom}".`,
-          },
-          history: {
-            type: Type.STRING,
-            description: `The history or origin of the idiom "${idiom}".`,
-          },
-          examples: {
-            type: Type.ARRAY,
-            items: {
+  try {
+    const ai = getAi();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Explain the idiom "${idiom}" in ${language}. Provide its meaning, a brief history or origin, and at least five distinct example sentences.`,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            meaning: {
               type: Type.STRING,
+              description: `The literal meaning of the idiom "${idiom}".`,
             },
-            description: `An array of at least five example sentences using the idiom "${idiom}".`,
+            history: {
+              type: Type.STRING,
+              description: `The history or origin of the idiom "${idiom}".`,
+            },
+            examples: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.STRING,
+              },
+              description: `An array of at least five example sentences using the idiom "${idiom}".`,
+            },
           },
+          required: ['meaning', 'history', 'examples'],
         },
-        required: ['meaning', 'history', 'examples'],
       },
-    },
-  });
-  
-  const jsonText = response.text.trim();
-  return JSON.parse(jsonText);
+    });
+    
+    if (!response || !response.text) {
+      throw new Error('No response received from AI service');
+    }
+    
+    const jsonText = response.text.trim();
+    const parsed = JSON.parse(jsonText);
+    
+    // Validate the response has required fields
+    if (!parsed.meaning || !parsed.history || !parsed.examples) {
+      throw new Error('Incomplete idiom information received');
+    }
+    
+    return parsed;
+  } catch (error: any) {
+    console.error('Error in getIdiomInfo:', error);
+    
+    // Provide more specific error messages
+    if (error.message?.includes('API_KEY')) {
+      throw new Error('API key is missing or invalid. Please check your configuration.');
+    } else if (error.message?.includes('quota')) {
+      throw new Error('API quota exceeded. Please try again later.');
+    } else if (error.message?.includes('rate limit')) {
+      throw new Error('Too many requests. Please wait a moment and try again.');
+    } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+      throw new Error('Network error. Please check your internet connection.');
+    } else if (error instanceof SyntaxError) {
+      throw new Error('Failed to parse AI response. The idiom might not be recognized.');
+    } else {
+      throw new Error(`Could not fetch idiom information: ${error.message || 'Unknown error'}`);
+    }
+  }
 }
 
 export async function getTextToSpeech(text: string): Promise<string> {

@@ -294,6 +294,23 @@ body {
 
 .error-container {
     color: var(--error-color);
+    gap: 1rem;
+}
+
+.error-message-main {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    max-width: 500px;
+}
+
+.error-idiom {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.error-actions {
+    margin-top: 1rem;
 }
 
 .loading-spinner {

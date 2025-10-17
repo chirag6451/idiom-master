@@ -188,9 +188,11 @@ const App: React.FC = () => {
         setIsCrossLangLoading(false);
       }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to get idiom info:", err);
-      setErrorMessage("Sorry, I couldn't find information for this idiom. Please try another one.");
+      // Use the detailed error message from the service
+      const errorMsg = err?.message || "Sorry, I couldn't find information for this idiom. Please try another one.";
+      setErrorMessage(errorMsg);
       setAppState(AppState.ERROR);
     }
   }, [config]);
@@ -560,7 +562,15 @@ const App: React.FC = () => {
         return (
           <div className="error-container">
             <h3>Oops!</h3>
-            <p>{errorMessage}</p>
+            <p className="error-message-main">{errorMessage}</p>
+            {currentIdiom && (
+              <p className="error-idiom">Idiom: "{currentIdiom}"</p>
+            )}
+            <div className="error-actions">
+              <button onClick={handleNextIdiom} className="btn btn-primary">
+                Try Another Idiom
+              </button>
+            </div>
           </div>
         );
       case AppState.SUCCESS:
