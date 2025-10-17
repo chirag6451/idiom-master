@@ -22,6 +22,7 @@ export type Favorite = {
   idiom: string;
   language: Language;
   info: IdiomInfo; // Store full idiom info for offline access
+  audioData?: string; // Base64 audio data for offline playback
   savedAt: number; // Timestamp when saved
 };
 

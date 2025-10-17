@@ -139,9 +139,24 @@ const App: React.FC = () => {
 
   useEffect(() => {
     try {
-      localStorage.setItem('idiomFavorites', JSON.stringify(favorites));
-    } catch (error) {
+      const favoritesData = JSON.stringify(favorites);
+      localStorage.setItem('idiomFavorites', favoritesData);
+      
+      // Log storage usage
+      const sizeInBytes = new Blob([favoritesData]).size;
+      const sizeInKB = (sizeInBytes / 1024).toFixed(2);
+      const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+      console.log(`Favorites storage: ${favorites.length} items, ${sizeInKB} KB (${sizeInMB} MB)`);
+      
+      // Warn if approaching localStorage limit (typically 5-10MB)
+      if (sizeInBytes > 4 * 1024 * 1024) { // 4MB warning
+        console.warn('Favorites storage is getting large. Consider removing old items.');
+      }
+    } catch (error: any) {
       console.error("Failed to save favorites to localStorage:", error);
+      if (error.name === 'QuotaExceededError') {
+        setToastMessage('⚠️ Storage full! Remove some favorites to save new ones.');
+      }
     }
   }, [favorites]);
   
@@ -319,12 +334,21 @@ const App: React.FC = () => {
       
       console.log('AudioContext state:', audioContext.state);
       
-      // Fetch the audio data
-      const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.examples[0]}`;
-      console.log('Fetching TTS for:', textToSpeak);
+      // Check if we have saved audio data for this favorite
+      const savedFavorite = favorites.find(fav => fav.idiom === currentIdiom && fav.language === language);
+      let base64Audio: string;
       
-      const base64Audio = await getTextToSpeech(textToSpeak);
-      console.log('Received audio data, length:', base64Audio.length);
+      if (savedFavorite?.audioData) {
+        console.log('Using saved audio from favorites');
+        base64Audio = savedFavorite.audioData;
+      } else {
+        // Fetch the audio data from API
+        const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.examples[0]}`;
+        console.log('Fetching TTS for:', textToSpeak);
+        base64Audio = await getTextToSpeech(textToSpeak);
+      }
+      
+      console.log('Audio data ready, length:', base64Audio.length);
 
       // Decode the audio
       const audioBytes = decode(base64Audio);
@@ -361,7 +385,7 @@ const App: React.FC = () => {
     }
   };
   
-  const handleToggleFavorite = () => {
+  const handleToggleFavorite = async () => {
     if (!currentIdiom || !idiomInfo) return;
     const isFavorite = favorites.some(fav => fav.idiom === currentIdiom && fav.language === language);
     
@@ -373,15 +397,43 @@ const App: React.FC = () => {
         setViewMode(ViewMode.ALL);
       }
     } else {
-      // Save complete idiom information for offline access
-      const newFavorite: Favorite = {
-        idiom: currentIdiom,
-        language,
-        info: idiomInfo,
-        savedAt: Date.now()
-      };
-      setFavorites([...favorites, newFavorite]);
-      setToastMessage('✨ Saved to favorites! Available offline.');
+      // Check if we've reached the limit
+      if (favorites.length >= 50) {
+        setToastMessage('⚠️ Maximum 50 favorites reached. Remove some to add new ones.');
+        return;
+      }
+      
+      setToastMessage('💾 Saving to favorites with audio...');
+      
+      try {
+        // Fetch and save audio data for offline playback
+        let audioData: string | undefined;
+        try {
+          const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.examples[0]}`;
+          audioData = await getTextToSpeech(textToSpeak);
+          console.log('Audio saved with favorite, size:', audioData.length);
+        } catch (err) {
+          console.warn('Could not save audio with favorite:', err);
+          // Continue without audio - better to save without audio than not save at all
+        }
+        
+        // Save complete idiom information for offline access
+        const newFavorite: Favorite = {
+          idiom: currentIdiom,
+          language,
+          info: idiomInfo,
+          audioData,
+          savedAt: Date.now()
+        };
+        
+        // Add to beginning of array (most recent first) and limit to 50
+        const updatedFavorites = [newFavorite, ...favorites].slice(0, 50);
+        setFavorites(updatedFavorites);
+        setToastMessage(`✨ Saved to favorites! (${updatedFavorites.length}/50) Available offline.`);
+      } catch (err) {
+        console.error('Error saving favorite:', err);
+        setToastMessage('❌ Failed to save favorite. Please try again.');
+      }
     }
   };
 
@@ -642,10 +694,11 @@ const App: React.FC = () => {
               <div className="idiom-actions">
                 <button
                   onClick={handleToggleFavorite}
-                  className={`btn-icon ${isCurrentFavorite ? 'is-favorite' : ''}`}
+                  className={`btn-favorite ${isCurrentFavorite ? 'is-favorite' : ''}`}
                   aria-label={isCurrentFavorite ? "Remove from favorites" : "Add to favorites"}
+                  title={isCurrentFavorite ? "Remove from favorites" : "Add to favorites"}
                 >
-                  <StarIcon className="w-6 h-6" />
+                  <StarIcon className="favorite-icon" />
                 </button>
                 <button 
                   onClick={handleToggleAudio} 
