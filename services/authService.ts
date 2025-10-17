@@ -25,14 +25,14 @@ const USERS = [
   {
     id: '2',
     username: 'demo',
-    passwordHash: 'c3499c2729730a7f807efb8676a92dcb6f8a3f8f0528583e8e1e6e8e5e8e5e8e',
+    passwordHash: 'd3ad9315b7be5dd53b31a273b3b3aba5defe700808305aa16a3062b76658a791',
     name: 'Demo User',
     email: 'demo@figuroai.com'
   },
   {
     id: '3',
     username: 'chirag',
-    passwordHash: 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f',
+    passwordHash: 'e6d12f1658709a376cf3a2d74488fba55c4104984d03be886573d4cd122c7844',
     name: 'Chirag Kansara',
     email: 'chirag@figuroai.com'
   },
