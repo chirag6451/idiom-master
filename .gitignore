@@ -29,3 +29,8 @@ dist-ssr
 # Deployment files with credentials
 deploy.sh
 *.conf
+
+# Backend
+server/.env
+server/figuroai.db
+server/node_modules

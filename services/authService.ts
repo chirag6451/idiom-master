@@ -3,13 +3,33 @@
  * Note: For production, use proper backend authentication
  */
 
-// Simple hash function (for demo - in production use proper crypto)
+// Simple hash function with fallback for non-HTTPS contexts
 async function simpleHash(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  // Try to use crypto.subtle if available (HTTPS or localhost)
+  if (crypto && crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      console.warn('crypto.subtle failed, using fallback hash');
+    }
+  }
+  
+  // Fallback: Simple hash for non-HTTPS (NOT SECURE - for demo only)
+  // This is a very basic hash - in production, always use HTTPS
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  // Convert to hex and pad to match SHA-256 length
+  const hexHash = Math.abs(hash).toString(16).padStart(64, '0');
+  console.warn('⚠️ Using fallback hash (not secure). Please use HTTPS in production.');
+  return hexHash;
 }
 
 // User database (passwords are hashed)
@@ -68,8 +88,18 @@ export interface User {
 
 export async function authenticateUser(username: string, password: string): Promise<User | null> {
   try {
+    console.log('🔐 Authenticating user:', username);
+    
+    // Check if crypto.subtle is available
+    if (!crypto || !crypto.subtle) {
+      console.error('❌ crypto.subtle not available');
+      throw new Error('Crypto API not available. Please use HTTPS or localhost.');
+    }
+    
     // Hash the provided password
+    console.log('🔒 Hashing password...');
     const passwordHash = await simpleHash(password);
+    console.log('✅ Password hash generated:', passwordHash.substring(0, 20) + '...');
     
     // Find user with matching username and password hash
     const user = USERS.find(
@@ -77,6 +107,7 @@ export async function authenticateUser(username: string, password: string): Prom
     );
     
     if (user) {
+      console.log('✅ User authenticated:', user.username);
       // Return user without password hash
       return {
         id: user.id,
@@ -86,9 +117,10 @@ export async function authenticateUser(username: string, password: string): Prom
       };
     }
     
+    console.log('❌ Invalid credentials for user:', username);
     return null;
   } catch (error) {
-    console.error('Authentication error:', error);
+    console.error('❌ Authentication error:', error);
     return null;
   }
 }
