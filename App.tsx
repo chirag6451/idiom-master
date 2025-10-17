@@ -1,0 +1,429 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+*/
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { AppState, IdiomInfo, Language, Favorite, ViewMode } from './types';
+import { getIdiomInfo, getTextToSpeech } from './services/geminiService';
+import { ArrowPathIcon, SpeakerWaveIcon, StopIcon, MagnifyingGlassIcon, StarIcon } from './components/icons';
+
+// --- Data ---
+const idioms: Record<Language, string[]> = {
+  English: ['Bite the bullet', 'Break a leg', 'A piece of cake', 'Spill the beans'],
+  Hindi: ['नौ दो ग्यारह होना', 'अंधों में काना राजा', 'ऊँट के मुँह में जीरा', 'घर का भेदी लंका ढाए'],
+  Gujarati: ['પેટમાં બિલાડા બોલવા', 'પથ્થર પર પાણી', 'પાણીમાં બેસી જવું', 'મગનું નામ મરી ન પાડવું'],
+};
+
+// --- Audio Utilities ---
+// FIX: Changed return type from `UintArray` to `Uint8Array`.
+function decode(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
+
+// --- Main Component ---
+const App: React.FC = () => {
+  const [appState, setAppState] = useState<AppState>(AppState.IDLE);
+  const [language, setLanguage] = useState<Language>('English');
+  const [currentIdiom, setCurrentIdiom] = useState<string | null>(null);
+  const [idiomInfo, setIdiomInfo] = useState<IdiomInfo | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Audio State
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ idiom: string; language: Language }[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  
+  // Favorites State
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.ALL);
+  const [currentFavoriteIndex, setCurrentFavoriteIndex] = useState(0);
+
+  // --- Effects ---
+  useEffect(() => {
+    try {
+      const storedFavorites = localStorage.getItem('idiomFavorites');
+      if (storedFavorites) {
+        setFavorites(JSON.parse(storedFavorites));
+      }
+    } catch (error) {
+      console.error("Failed to load favorites from localStorage:", error);
+    }
+    fetchNewIdiom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('idiomFavorites', JSON.stringify(favorites));
+    } catch (error) {
+      console.error("Failed to save favorites to localStorage:", error);
+    }
+  }, [favorites]);
+
+
+  const getAudioContext = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    }
+    return audioContextRef.current;
+  }, []);
+
+  const fetchIdiomDetails = useCallback(async (idiom: string, lang: Language) => {
+    if (audioSourceRef.current) {
+      audioSourceRef.current.stop();
+    }
+    setAppState(AppState.LOADING);
+    setIdiomInfo(null);
+    setErrorMessage(null);
+    setCurrentIdiom(idiom);
+    setLanguage(lang);
+
+    try {
+      const info = await getIdiomInfo(idiom, lang);
+      setIdiomInfo(info);
+      setAppState(AppState.SUCCESS);
+    } catch (err) {
+      console.error("Failed to get idiom info:", err);
+      setErrorMessage("Sorry, I couldn't find information for this idiom. Please try another one.");
+      setAppState(AppState.ERROR);
+    }
+  }, []);
+  
+  const fetchNewIdiom = useCallback((lang: Language = language) => {
+    setIsSearching(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    const langIdioms = idioms[lang];
+    const newIdiom = langIdioms[Math.floor(Math.random() * langIdioms.length)];
+    fetchIdiomDetails(newIdiom, lang);
+  }, [language, fetchIdiomDetails]);
+
+  const fetchNextFavorite = useCallback(() => {
+    if (favorites.length === 0) {
+      setViewMode(ViewMode.ALL);
+      fetchNewIdiom();
+      return;
+    }
+    const nextIndex = (currentFavoriteIndex + 1) % favorites.length;
+    setCurrentFavoriteIndex(nextIndex);
+    const nextFavorite = favorites[nextIndex];
+    fetchIdiomDetails(nextFavorite.idiom, nextFavorite.language);
+  }, [favorites, currentFavoriteIndex, fetchIdiomDetails, fetchNewIdiom]);
+
+  const handleNextIdiom = () => {
+    if (viewMode === ViewMode.FAVORITES) {
+      fetchNextFavorite();
+    } else {
+      fetchNewIdiom();
+    }
+  };
+
+  const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newLanguage = e.target.value as Language;
+    setLanguage(newLanguage);
+    setViewMode(ViewMode.ALL); // Revert to all mode on language change
+    fetchNewIdiom(newLanguage);
+  }
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) {
+      setIsSearching(false);
+      return;
+    }
+    setViewMode(ViewMode.ALL); // Revert to all mode when searching
+
+    const lowerCaseQuery = searchQuery.toLowerCase();
+    const results: { idiom: string; language: Language }[] = [];
+    
+    (Object.keys(idioms) as Language[]).forEach(lang => {
+      idioms[lang]
+        .filter(idiom => idiom.toLowerCase().includes(lowerCaseQuery))
+        .forEach(idiom => {
+          results.push({ idiom, language: lang });
+        });
+    });
+
+    setSearchResults(results);
+    setIsSearching(true);
+  };
+
+  const handleResultClick = (result: { idiom: string; language: Language }) => {
+    setIsSearching(false);
+    setSearchQuery('');
+    fetchIdiomDetails(result.idiom, result.language);
+  };
+
+  const handleToggleAudio = async () => {
+    if (isAudioPlaying && audioSourceRef.current) {
+        audioSourceRef.current.stop();
+        return;
+    }
+
+    if (!idiomInfo || isAudioLoading) return;
+
+    setIsAudioLoading(true);
+    setErrorMessage(null);
+    try {
+      const textToSpeak = `${currentIdiom}. As in: ${idiomInfo.example}`;
+      const base64Audio = await getTextToSpeech(textToSpeak);
+      const audioContext = getAudioContext();
+      
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
+      const audioBytes = decode(base64Audio);
+      const audioBuffer = await decodeAudioData(audioBytes, audioContext, 24000, 1);
+      
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+      
+      audioSourceRef.current = source;
+      
+      source.onended = () => {
+          setIsAudioPlaying(false);
+          audioSourceRef.current = null;
+      };
+      
+      source.start();
+      setIsAudioLoading(false);
+      setIsAudioPlaying(true);
+    } catch (err) {
+      console.error("Failed to play audio:", err);
+      setErrorMessage("Sorry, couldn't play the audio.");
+      setIsAudioLoading(false);
+      setIsAudioPlaying(false);
+    }
+  };
+  
+  const handleToggleFavorite = () => {
+    if (!currentIdiom) return;
+    const isFavorite = favorites.some(fav => fav.idiom === currentIdiom && fav.language === language);
+    
+    if (isFavorite) {
+      const updatedFavorites = favorites.filter(fav => !(fav.idiom === currentIdiom && fav.language === language));
+      setFavorites(updatedFavorites);
+      // If the last favorite is removed while in favorites view, switch back to ALL
+      if(viewMode === ViewMode.FAVORITES && updatedFavorites.length === 0) {
+        setViewMode(ViewMode.ALL);
+      }
+    } else {
+      setFavorites([...favorites, { idiom: currentIdiom, language }]);
+    }
+  };
+
+  const handleToggleViewMode = () => {
+    const newMode = viewMode === ViewMode.ALL ? ViewMode.FAVORITES : ViewMode.ALL;
+    setViewMode(newMode);
+    
+    if (newMode === ViewMode.FAVORITES) {
+      setCurrentFavoriteIndex(-1); // Will become 0 on first "next" click
+      if (favorites.length > 0) {
+          const firstFavorite = favorites[0];
+          fetchIdiomDetails(firstFavorite.idiom, firstFavorite.language);
+      }
+    } else {
+      fetchNewIdiom();
+    }
+  };
+
+  const isCurrentFavorite = favorites.some(fav => fav.idiom === currentIdiom && fav.language === language);
+  
+  const renderCardContent = () => {
+    if (isSearching) {
+        return (
+            <div className="search-results-container">
+                <h3 className="search-results-header">Results for "{searchQuery}"</h3>
+                {searchResults.length > 0 ? (
+                    <ul className="search-results-list">
+                        {searchResults.map((result, index) => (
+                            <li key={index}>
+                                <button className="search-result-item" onClick={() => handleResultClick(result)}>
+                                    <span className="search-result-idiom">{result.idiom}</span>
+                                    <span className="search-result-lang">{result.language}</span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="placeholder-container">
+                        <p>No idioms found matching your search.</p>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    if (viewMode === ViewMode.FAVORITES && favorites.length === 0) {
+        return (
+            <div className="placeholder-container">
+                <StarIcon className="w-12 h-12 text-gray-500 mb-4" />
+                <h3 className="text-xl font-semibold text-gray-300">No Favorites Yet</h3>
+                <p>Click the star on an idiom to save it here.</p>
+            </div>
+        );
+    }
+
+    switch (appState) {
+      case AppState.LOADING:
+        return (
+          <div className="loading-container">
+            <div className="loading-spinner"></div>
+            <p>Discovering idiom secrets...</p>
+          </div>
+        );
+      case AppState.ERROR:
+        return (
+          <div className="error-container">
+            <h3>Oops!</h3>
+            <p>{errorMessage}</p>
+          </div>
+        );
+      case AppState.SUCCESS:
+        if (!idiomInfo || !currentIdiom) return null;
+        return (
+          <>
+            <div className="idiom-header">
+              <h2 className="idiom-text">{currentIdiom}</h2>
+              <div className="idiom-actions">
+                <button
+                  onClick={handleToggleFavorite}
+                  className={`btn-icon ${isCurrentFavorite ? 'is-favorite' : ''}`}
+                  aria-label={isCurrentFavorite ? "Remove from favorites" : "Add to favorites"}
+                >
+                  <StarIcon className="w-6 h-6" />
+                </button>
+                <button 
+                  onClick={handleToggleAudio} 
+                  disabled={isAudioLoading} 
+                  className="btn btn-secondary" 
+                  aria-label={isAudioPlaying ? "Stop audio playback" : "Listen to idiom"}
+                >
+                  {isAudioLoading ? (
+                      <>
+                          <div className="btn-spinner"></div>
+                          Loading...
+                      </>
+                  ) : isAudioPlaying ? (
+                      <>
+                          <StopIcon className="w-6 h-6" />
+                          Stop
+                      </>
+                  ) : (
+                      <>
+                          <SpeakerWaveIcon className="w-6 h-6" />
+                          Listen
+                      </>
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="idiom-section">
+              <h3>Meaning & History</h3>
+              <p>{idiomInfo.meaning} {idiomInfo.history}</p>
+            </div>
+            <div className="idiom-section">
+              <h3>Usage Example</h3>
+              <p><em>"{idiomInfo.example}"</em></p>
+            </div>
+          </>
+        );
+      default:
+        return (
+            <div className="placeholder-container">
+                <p>Select a language to begin your journey into the world of idioms.</p>
+            </div>
+        );
+    }
+  };
+
+  return (
+    <div className="app-container">
+      <header className="header">
+        <h1 className="title">Idiom Master</h1>
+        <div className="controls-container">
+            <button 
+                className="btn btn-secondary" 
+                onClick={handleToggleViewMode}
+                disabled={favorites.length === 0 && viewMode === ViewMode.ALL}
+            >
+              <StarIcon className="w-5 h-5" />
+              {viewMode === ViewMode.ALL ? 'My Favorites' : 'Show All'}
+            </button>
+            <div className="language-selector">
+                <select 
+                    className="language-select" 
+                    value={language} 
+                    onChange={handleLanguageChange}
+                    aria-label="Select language"
+                    disabled={isSearching || viewMode === ViewMode.FAVORITES}
+                >
+                    {Object.keys(idioms).map(lang => (
+                    <option key={lang} value={lang}>{lang}</option>
+                    ))}
+                </select>
+            </div>
+            <form className="search-form" onSubmit={handleSearch}>
+                <input
+                    type="search"
+                    className="search-input"
+                    placeholder="Search for an idiom..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <button type="submit" className="btn search-btn" aria-label="Search">
+                    <MagnifyingGlassIcon className="w-5 h-5" />
+                </button>
+            </form>
+        </div>
+      </header>
+      
+      <main className="idiom-card" role="main" aria-live="polite">
+        {renderCardContent()}
+      </main>
+      
+      <footer className="controls">
+        <button onClick={handleNextIdiom} disabled={appState === AppState.LOADING} className="btn btn-primary">
+          <ArrowPathIcon className="w-5 h-5" />
+          Next Idiom
+        </button>
+      </footer>
+    </div>
+  );
+};
+
+export default App;
