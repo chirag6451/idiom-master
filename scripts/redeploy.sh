@@ -18,7 +18,7 @@ trap 'log "Deployment failed (line ${LINENO})."; exit 1' ERR
 
 wait_for_url() {
   local url=$1
-  local retries=${2:-10}
+  local retries=${2:-20}
   local delay=${3:-3}
   local attempt=1
   while (( attempt <= retries )); do
@@ -47,8 +47,25 @@ npm run build
 log "Restarting frontend service ($FRONTEND_SERVICE)"
 systemctl restart "$FRONTEND_SERVICE"
 
+wait_for_frontend() {
+  local start
+  start=$(date +%s)
+  sleep 2
+  if ! wait_for_url "$FRONTEND_HEALTH" 20 3; then
+    log "Frontend health check failed; recent service status follows"
+    systemctl status "$FRONTEND_SERVICE" --no-pager || true
+    exit 1
+  fi
+  local end
+  end=$(date +%s)
+  log "Frontend became available in $((end - start))s"
+}
+
 log "Verifying frontend health"
-if ! wait_for_url "$FRONTEND_HEALTH"; then
+wait_for_frontend
+
+log "Changing directory to $BACKEND_DIR"
+cd "$BACKEND_DIR"
   log "Frontend health check failed; recent service status follows"
   systemctl status "$FRONTEND_SERVICE" --no-pager || true
   exit 1
