@@ -9,6 +9,17 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
       },
+      preview: {
+        port: 8303,
+        host: '0.0.0.0',
+        allowedHosts: [
+          'figuroai.com',
+          'www.figuroai.com',
+          'FiguroAI.com',
+          'WWW.FiguroAI.com',
+          '209.182.237.241'
+        ],
+      },
       plugins: [react()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),

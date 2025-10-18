@@ -66,13 +66,6 @@ wait_for_frontend
 
 log "Changing directory to $BACKEND_DIR"
 cd "$BACKEND_DIR"
-  log "Frontend health check failed; recent service status follows"
-  systemctl status "$FRONTEND_SERVICE" --no-pager || true
-  exit 1
-fi
-
-log "Changing directory to $BACKEND_DIR"
-cd "$BACKEND_DIR"
 
 log "Installing backend dependencies"
 npm install
