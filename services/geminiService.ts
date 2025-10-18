@@ -24,12 +24,20 @@ function getAi() {
 export async function getIdiomInfo(
   idiom: string,
   language: string,
+  excludeIdioms?: string[]
 ): Promise<IdiomInfo> {
   try {
     const ai = getAi();
+    
+    // Build exclusion note if there are idioms to exclude
+    let exclusionNote = '';
+    if (excludeIdioms && excludeIdioms.length > 0) {
+      exclusionNote = `\n\nIMPORTANT: This idiom should be different from these already shown idioms: ${excludeIdioms.join(', ')}. Make sure "${idiom}" is unique and not a variation of any of these.`;
+    }
+    
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Explain the idiom "${idiom}" in ${language}. Provide its meaning, a brief history or origin, and at least five distinct example sentences.`,
+      contents: `Explain the idiom "${idiom}" in ${language}. Provide its meaning, a brief history or origin, and at least five distinct example sentences.${exclusionNote}`,
       config: {
         responseMimeType: 'application/json',
         responseSchema: {

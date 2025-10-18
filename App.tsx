@@ -100,6 +100,7 @@ const App: React.FC = () => {
   // Cross-Language State
   const [crossLanguageIdioms, setCrossLanguageIdioms] = useState<CrossLanguageIdioms | null>(null);
   const [isCrossLangLoading, setIsCrossLangLoading] = useState(false);
+  const shownIdiomsRef = useRef<Record<Language, Set<string>>>({});
 
   // --- Effects ---
   useEffect(() => {
@@ -316,7 +317,7 @@ const App: React.FC = () => {
     setToastMessage('Logged out successfully');
   };
 
-  const fetchIdiomDetails = useCallback(async (idiom: string, lang: Language) => {
+  const fetchIdiomDetails = useCallback(async (idiom: string, lang: Language, excludeList: string[] = []) => {
     if (!config) return;
     if (audioSourceRef.current) {
       audioSourceRef.current.stop();
@@ -330,7 +331,7 @@ const App: React.FC = () => {
     setCrossLanguageIdioms(null);
 
     try {
-      const info = await getIdiomInfo(idiom, lang);
+      const info = await getIdiomInfo(idiom, lang, excludeList);
       setIdiomInfo(info);
       setAppState(AppState.SUCCESS);
 
@@ -362,9 +363,45 @@ const App: React.FC = () => {
     setSearchQuery('');
     setSearchResults([]);
     const langIdioms = config.languages[lang].idioms;
-    const newIdiom = langIdioms[Math.floor(Math.random() * langIdioms.length)];
-    fetchIdiomDetails(newIdiom, lang);
-  }, [language, fetchIdiomDetails, config]);
+    const seenSet = shownIdiomsRef.current[lang] ?? new Set<string>();
+    const seenList = Array.from(seenSet);
+    const favoriteIdioms = favorites
+      .filter(fav => fav.language === lang)
+      .map(fav => fav.idiom);
+    const exclusionForSelection = new Set([...seenList, ...favoriteIdioms]);
+
+    let availableIdioms = langIdioms.filter(idiom => !exclusionForSelection.has(idiom));
+    let newIdiom: string;
+
+    if (availableIdioms.length === 0) {
+      // Reset seen set for this language but continue to exclude favorites
+      shownIdiomsRef.current[lang]?.clear();
+      const favoritesSet = new Set(favoriteIdioms);
+      const nonFavoriteIdioms = langIdioms.filter(idiom => !favoritesSet.has(idiom));
+      if (nonFavoriteIdioms.length > 0) {
+        availableIdioms = nonFavoriteIdioms;
+      } else {
+        // All idioms are in favorites; fall back to full list
+        availableIdioms = langIdioms;
+      }
+    }
+
+    newIdiom = availableIdioms[Math.floor(Math.random() * availableIdioms.length)];
+
+    if (!shownIdiomsRef.current[lang]) {
+      shownIdiomsRef.current[lang] = new Set<string>();
+    }
+    shownIdiomsRef.current[lang].add(newIdiom);
+
+    const excludeForPrompt = Array.from(
+      new Set([
+        ...favoriteIdioms,
+        ...Array.from(shownIdiomsRef.current[lang]).filter(idiom => idiom !== newIdiom),
+      ]),
+    );
+
+    fetchIdiomDetails(newIdiom, lang, excludeForPrompt);
+  }, [language, config, favorites, fetchIdiomDetails]);
 
   const fetchNextFavorite = useCallback(() => {
     if (favorites.length === 0) {

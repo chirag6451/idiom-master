@@ -35,13 +35,21 @@ export async function uploadAudioToS3(userId, idiom, base64Audio) {
       Key: key,
       Body: audioBuffer,
       ContentType: 'audio/mpeg',
-      ACL: 'public-read' // Make publicly accessible
+      // Note: No ACL - bucket uses BucketOwnerEnforced
     };
     
     const result = await s3.upload(params).promise();
     console.log(`✅ Audio uploaded to S3: ${result.Location}`);
     
-    return result.Location;
+    // Generate a signed URL that expires in 7 days (for public access)
+    const signedUrl = s3.getSignedUrl('getObject', {
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Expires: 604800 // 7 days in seconds
+    });
+    
+    console.log(`✅ Generated signed URL (expires in 7 days)`);
+    return signedUrl;
   } catch (error) {
     console.error('❌ S3 upload error:', error);
     throw error;
